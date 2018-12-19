@@ -1,0 +1,23 @@
+{
+    "name": "router-coordinator-consumer",
+    "version": "1.0.0",
+    "description": "",
+    "main": "index.js",
+    "dependencies": {
+        "commander": "^2.19.0",
+        "dotenv": "^6.2.0",
+        "partitioner": "git+https://github.com/plasne/partitioner.git",
+        "tcp-comm": "git+https://github.com/plasne/tcp-comm.git",
+        "winston": "^3.1.0"
+    },
+    "devDependencies": {
+        "@types/dotenv": "^6.1.0",
+        "tslint": "^5.11.0",
+        "typescript": "^3.2.2"
+    },
+    "scripts": {
+        "test": "echo \"Error: no test specified\" && exit 1"
+    },
+    "author": "",
+    "license": "ISC"
+}
