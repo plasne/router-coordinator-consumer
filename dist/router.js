@@ -1,4 +1,5 @@
 "use strict";
+// MAYBE SUPPORT CONNECTING TO A RANGE FOR DISCOVERY
 var __awaiter = (this && this.__awaiter) || function (thisArg, _arguments, P, generator) {
     return new (P || (P = Promise))(function (resolve, reject) {
         function fulfilled(value) { try { step(generator.next(value)); } catch (e) { reject(e); } }
@@ -47,21 +48,26 @@ var cmd = require("commander");
 var dotenv = require("dotenv");
 var partitioner_1 = require("partitioner");
 var winston = __importStar(require("winston"));
+var Dispatcher_1 = require("./Dispatcher");
 // set env
 dotenv.config();
 // define options
 cmd.option('-l, --log-level <s>', 'LOG_LEVEL. The minimum level to log (error, warn, info, verbose, debug, silly). Defaults to "info".', /^(error|warn|info|verbose|debug|silly)$/i)
     .option('-i, --client-id <s>', 'CLIENT_ID. The unique identifier of this client. Default is a random GUID, but this means if the client is recycled it cannot be reassigned to the previous partitions.')
-    .option('-a, --address <s>', 'ADDRESS. The address of the server. Default is "127.0.0.1".')
-    .option('-p, --port <i>', 'PORT. The port to connect to on the server. Default is "8000".', parseInt)
+    .option('-s, --server-address <s>', 'SERVER_ADDRESS. The address of the server. Default is "127.0.0.1".')
+    .option('-t, --server-port <i>', 'SERVER_PORT. The port to connect to on the server. Default is "8000".', parseInt)
     .option('-c, --count <i>', 'COUNT. The number of messages per second per partition to generate. Default is "10".', parseInt)
+    .option('-f, --flush-every <i>', 'FLUSH_EVERY. The number of milliseconds between attempts to flush the buffer. Default is "10000" (every 10 seconds).', parseInt)
+    .option('-t, --buffer-timeout <i>', 'BUFFER_TIMEOUT. The number of milliseconds that a message can stay in the buffer. Default is "60000" (1 minute).', parseInt)
     .parse(process.argv);
 // globals
 var LOG_LEVEL = cmd.logLevel || process.env.LOG_LEVEL || 'info';
 var CLIENT_ID = cmd.clientId || process.env.CLIENT_ID;
-var ADDRESS = cmd.address || process.env.ADDRESS;
-var PORT = cmd.port || process.env.PORT;
-var COUNT = cmd.count || process.env.COUNT;
+var SERVER_ADDRESS = cmd.serverAddress || process.env.SERVER_ADDRESS;
+var SERVER_PORT = cmd.serverPort || process.env.SERVER_PORT;
+var COUNT = cmd.count || process.env.COUNT || 10;
+var FLUSH_EVERY = cmd.flushEvery || process.env.FLUSH_EVERY || 10000;
+var BUFFER_TIMEOUT = cmd.bufferTimeout || process.env.BUFFER_TIMEOUT || 60000;
 // start logging
 var logColors = {
     debug: '\x1b[32m',
@@ -87,15 +93,15 @@ function random(min, max) {
 }
 function setup() {
     return __awaiter(this, void 0, void 0, function () {
-        var partitions_1, pclient_1, generate_1;
+        var partitions_1, pclient_1, dispatcher_1, generate_1;
         return __generator(this, function (_a) {
             try {
                 console.log("LOG_LEVEL is \"" + LOG_LEVEL + "\".");
                 partitions_1 = [];
                 pclient_1 = new partitioner_1.PartitionerClient({
-                    address: ADDRESS,
+                    address: SERVER_ADDRESS,
                     id: CLIENT_ID,
-                    port: PORT
+                    port: SERVER_PORT
                 })
                     .on('connect', function () {
                     logger.verbose("connected to server at \"" + pclient_1.address + ":" + pclient_1.port + "\".");
@@ -125,6 +131,32 @@ function setup() {
                 logger.info("ADDRESS is \"" + pclient_1.address + "\".");
                 logger.info("PORT is \"" + pclient_1.port + "\".");
                 logger.info("COUNT is \"" + COUNT + "\".");
+                dispatcher_1 = new Dispatcher_1.Dispatcher(pclient_1, FLUSH_EVERY, BUFFER_TIMEOUT)
+                    .on('error', function (error, module) {
+                    logger.error("there was an error raised in module \"" + module + "\"...");
+                    logger.error(error.stack ? error.stack : error.message);
+                })
+                    .on('map', function (partition) {
+                    logger.verbose("map [" + partition.low + " - " + partition.high + "] to " + partition.address + ":" + partition.port);
+                })
+                    .on('unmap', function (partition) {
+                    logger.verbose("unmap [" + partition.low + " - " + partition.high + "] to " + partition.address + ":" + partition.port);
+                })
+                    .on('dispatch', function (message, client) {
+                    logger.verbose("dispatched " + JSON.stringify(message.payload) + " to " + client.address + ":" + client.port);
+                })
+                    .on('buffer', function (message) {
+                    logger.verbose("buffered " + JSON.stringify(message.payload));
+                })
+                    .on('reject', function (message) {
+                    logger.verbose("rejected " + JSON.stringify(message));
+                })
+                    .on('begin-flush', function (count) {
+                    logger.verbose("the buffer flush began with " + count + " messages remaining.");
+                })
+                    .on('end-flush', function (count) {
+                    logger.verbose("the buffer flush ended with " + count + " messages remaining.");
+                });
                 // connect
                 pclient_1.connect();
                 generate_1 = function () {
@@ -134,10 +166,10 @@ function setup() {
                             for (var i = 0; i < COUNT; i++) {
                                 var msg = {
                                     heading: random(0, 359),
-                                    icao: random(1000, 2000),
+                                    icao: random(1000, 15999),
                                     source: partition.id
                                 };
-                                console.log(msg);
+                                dispatcher_1.tell(msg.icao, undefined, msg);
                             }
                         }
                     }

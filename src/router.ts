@@ -1,8 +1,14 @@
+// MAYBE SUPPORT CONNECTING TO A RANGE FOR DISCOVERY
+
 // includes
 import cmd = require('commander');
 import dotenv = require('dotenv');
 import { IPartition, PartitionerClient } from 'partitioner';
+import { TcpClient } from 'tcp-comm';
 import * as winston from 'winston';
+import { Dispatcher, IEnvelope } from './Dispatcher';
+import IMap from './IMap';
+import IMessage from './IMessage';
 
 // set env
 dotenv.config();
@@ -18,12 +24,12 @@ cmd.option(
         'CLIENT_ID. The unique identifier of this client. Default is a random GUID, but this means if the client is recycled it cannot be reassigned to the previous partitions.'
     )
     .option(
-        '-a, --address <s>',
-        'ADDRESS. The address of the server. Default is "127.0.0.1".'
+        '-s, --server-address <s>',
+        'SERVER_ADDRESS. The address of the server. Default is "127.0.0.1".'
     )
     .option(
-        '-p, --port <i>',
-        'PORT. The port to connect to on the server. Default is "8000".',
+        '-t, --server-port <i>',
+        'SERVER_PORT. The port to connect to on the server. Default is "8000".',
         parseInt
     )
     .option(
@@ -31,14 +37,26 @@ cmd.option(
         'COUNT. The number of messages per second per partition to generate. Default is "10".',
         parseInt
     )
+    .option(
+        '-f, --flush-every <i>',
+        'FLUSH_EVERY. The number of milliseconds between attempts to flush the buffer. Default is "10000" (every 10 seconds).',
+        parseInt
+    )
+    .option(
+        '-t, --buffer-timeout <i>',
+        'BUFFER_TIMEOUT. The number of milliseconds that a message can stay in the buffer. Default is "60000" (1 minute).',
+        parseInt
+    )
     .parse(process.argv);
 
 // globals
 const LOG_LEVEL = cmd.logLevel || process.env.LOG_LEVEL || 'info';
 const CLIENT_ID = cmd.clientId || process.env.CLIENT_ID;
-const ADDRESS = cmd.address || process.env.ADDRESS;
-const PORT = cmd.port || process.env.PORT;
-const COUNT = cmd.count || process.env.COUNT;
+const SERVER_ADDRESS = cmd.serverAddress || process.env.SERVER_ADDRESS;
+const SERVER_PORT = cmd.serverPort || process.env.SERVER_PORT;
+const COUNT = cmd.count || process.env.COUNT || 10;
+const FLUSH_EVERY = cmd.flushEvery || process.env.FLUSH_EVERY || 10000;
+const BUFFER_TIMEOUT = cmd.bufferTimeout || process.env.BUFFER_TIMEOUT || 60000;
 
 // start logging
 const logColors: {
@@ -81,9 +99,9 @@ async function setup() {
 
         // setup the client
         const pclient = new PartitionerClient({
-            address: ADDRESS,
+            address: SERVER_ADDRESS,
             id: CLIENT_ID,
-            port: PORT
+            port: SERVER_PORT
         })
             .on('connect', () => {
                 logger.verbose(
@@ -121,6 +139,52 @@ async function setup() {
         logger.info(`PORT is "${pclient.port}".`);
         logger.info(`COUNT is "${COUNT}".`);
 
+        // create the dispatcher
+        const dispatcher = new Dispatcher(pclient, FLUSH_EVERY, BUFFER_TIMEOUT)
+            .on('error', (error: Error, module: string) => {
+                logger.error(
+                    `there was an error raised in module "${module}"...`
+                );
+                logger.error(error.stack ? error.stack : error.message);
+            })
+            .on('map', (partition: IMap) => {
+                logger.verbose(
+                    `map [${partition.low} - ${partition.high}] to ${
+                        partition.address
+                    }:${partition.port}`
+                );
+            })
+            .on('unmap', (partition: IMap) => {
+                logger.verbose(
+                    `unmap [${partition.low} - ${partition.high}] to ${
+                        partition.address
+                    }:${partition.port}`
+                );
+            })
+            .on('dispatch', (message: IEnvelope, client: TcpClient) => {
+                logger.verbose(
+                    `dispatched ${JSON.stringify(message.payload)} to ${
+                        client.address
+                    }:${client.port}`
+                );
+            })
+            .on('buffer', (message: IEnvelope) => {
+                logger.verbose(`buffered ${JSON.stringify(message.payload)}`);
+            })
+            .on('reject', (message: IMessage) => {
+                logger.verbose(`rejected ${JSON.stringify(message)}`);
+            })
+            .on('begin-flush', count => {
+                logger.verbose(
+                    `the buffer flush began with ${count} messages remaining.`
+                );
+            })
+            .on('end-flush', count => {
+                logger.verbose(
+                    `the buffer flush ended with ${count} messages remaining.`
+                );
+            });
+
         // connect
         pclient.connect();
 
@@ -131,10 +195,10 @@ async function setup() {
                     for (let i = 0; i < COUNT; i++) {
                         const msg = {
                             heading: random(0, 359),
-                            icao: random(1000, 2000),
+                            icao: random(1000, 15999),
                             source: partition.id
                         };
-                        console.log(msg);
+                        dispatcher.tell(msg.icao, undefined, msg);
                     }
                 }
             } catch (error) {

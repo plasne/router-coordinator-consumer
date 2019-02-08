@@ -1,4 +1,5 @@
 "use strict";
+// RESPOND WITH REJECTIONS
 var __awaiter = (this && this.__awaiter) || function (thisArg, _arguments, P, generator) {
     return new (P || (P = Promise))(function (resolve, reject) {
         function fulfilled(value) { try { step(generator.next(value)); } catch (e) { reject(e); } }
@@ -87,12 +88,12 @@ var logger = winston.createLogger({
 });
 function setup() {
     return __awaiter(this, void 0, void 0, function () {
-        var partitions_1, server, pclient_1;
+        var partitions_1, server_1, pclient_1;
         return __generator(this, function (_a) {
             try {
                 console.log("LOG_LEVEL is \"" + LOG_LEVEL + "\".");
                 partitions_1 = [];
-                server = new tcp_comm_1.TcpServer({
+                server_1 = new tcp_comm_1.TcpServer({
                     port: CLIENT_PORT
                 })
                     .on('connect', function (client) {
@@ -103,7 +104,24 @@ function setup() {
                         logger.info("client \"" + client.id + "\" disconnected.");
                 })
                     .on('data', function (client, payload, respond) {
-                    logger.info("from \"" + client.id + "\": " + JSON.stringify(payload));
+                    try {
+                        var partition = partitions_1.find(function (p) {
+                            return p.metadata.low <= payload.icao &&
+                                p.metadata.high >= payload.icao;
+                        });
+                        if (partition) {
+                            // process as appropriate
+                            logger.info("accepted from \"" + client.id + "\": " + JSON.stringify(payload));
+                        }
+                        else {
+                            // reject; this isn't the consumer handling this partition
+                            server_1.tell(client, 'reject', payload);
+                            logger.info("rejected from \"" + client.id + "\": " + JSON.stringify(payload));
+                        }
+                    }
+                    catch (error) {
+                        // invalid data; but important that there is still a response
+                    }
                     if (respond)
                         respond();
                 })
@@ -116,7 +134,7 @@ function setup() {
                     id: CLIENT_ID,
                     metadata: {
                         address: CLIENT_ADDRESS,
-                        port: server.port
+                        port: server_1.port
                     },
                     port: SERVER_PORT
                 })
@@ -147,11 +165,11 @@ function setup() {
                 // log settings
                 logger.info("CLIENT_ID is \"" + pclient_1.port + "\".");
                 logger.info("CLIENT_ADDRESS is \"" + CLIENT_ADDRESS + "\".");
-                logger.info("CLIENT_PORT is \"" + server.port + "\".");
+                logger.info("CLIENT_PORT is \"" + server_1.port + "\".");
                 logger.info("SERVER_ADDRESS is \"" + pclient_1.port + "\".");
                 logger.info("SERVER_PORT is \"" + pclient_1.port + "\".");
                 // connect
-                server.listen();
+                server_1.listen();
                 pclient_1.connect();
             }
             catch (error) {

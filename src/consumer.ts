@@ -1,9 +1,12 @@
+// RESPOND WITH REJECTIONS
+
 // includes
 import cmd = require('commander');
 import dotenv = require('dotenv');
 import { IPartition, PartitionerClient } from 'partitioner';
 import { TcpServer } from 'tcp-comm';
 import * as winston from 'winston';
+import IMessage from './IMessage';
 
 // set env
 dotenv.config();
@@ -92,8 +95,32 @@ async function setup() {
             .on('disconnect', client => {
                 if (client) logger.info(`client "${client.id}" disconnected.`);
             })
-            .on('data', (client, payload, respond) => {
-                logger.info(`from "${client.id}": ${JSON.stringify(payload)}`);
+            .on('data', (client, payload: IMessage, respond) => {
+                try {
+                    const partition = partitions.find(
+                        p =>
+                            p.metadata.low <= payload.icao &&
+                            p.metadata.high >= payload.icao
+                    );
+                    if (partition) {
+                        // process as appropriate
+                        logger.info(
+                            `accepted from "${client.id}": ${JSON.stringify(
+                                payload
+                            )}`
+                        );
+                    } else {
+                        // reject; this isn't the consumer handling this partition
+                        server.tell(client, 'reject', payload);
+                        logger.info(
+                            `rejected from "${client.id}": ${JSON.stringify(
+                                payload
+                            )}`
+                        );
+                    }
+                } catch (error) {
+                    // invalid data; but important that there is still a response
+                }
                 if (respond) respond();
             })
             .on('error', (error, module) => {
