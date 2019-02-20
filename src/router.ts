@@ -135,9 +135,12 @@ async function setup() {
             });
 
         // log settings
-        logger.info(`ADDRESS is "${pclient.address}".`);
-        logger.info(`PORT is "${pclient.port}".`);
+        logger.info(`CLIENT_ID is "${CLIENT_ID}".`);
+        logger.info(`SERVER_ADDRESS is "${SERVER_ADDRESS}".`);
+        logger.info(`SERVER_PORT is "${SERVER_PORT}".`);
         logger.info(`COUNT is "${COUNT}".`);
+        logger.info(`FLUSH_EVERY is "${FLUSH_EVERY}".`);
+        logger.info(`BUFFER_TIMEOUT is "${BUFFER_TIMEOUT}".`);
 
         // create the dispatcher
         const dispatcher = new Dispatcher(pclient, FLUSH_EVERY, BUFFER_TIMEOUT)
@@ -161,18 +164,21 @@ async function setup() {
                     }:${partition.port}`
                 );
             })
-            .on('dispatch', (message: IEnvelope, client: TcpClient) => {
+            .on('dispatch', (envelope: IEnvelope, client: TcpClient) => {
                 logger.verbose(
-                    `dispatched ${JSON.stringify(message.payload)} to ${
+                    `dispatched ${JSON.stringify(envelope.payload)} to ${
                         client.address
                     }:${client.port}`
                 );
             })
-            .on('buffer', (message: IEnvelope) => {
-                logger.verbose(`buffered ${JSON.stringify(message.payload)}`);
+            .on('buffer', (envelope: IEnvelope) => {
+                logger.verbose(`buffered ${JSON.stringify(envelope.payload)}`);
             })
             .on('reject', (message: IMessage) => {
                 logger.verbose(`rejected ${JSON.stringify(message)}`);
+            })
+            .on('timeout', (envelope: IEnvelope) => {
+                logger.verbose(`timeout ${JSON.stringify(envelope.payload)}`);
             })
             .on('begin-flush', count => {
                 logger.verbose(

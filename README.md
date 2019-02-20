@@ -68,9 +68,10 @@ The coordinator has the following options:
 -   ROUTER_PORT - The port that accepts connections from router clients. Default is "8000".
 -   CONSUMER_PORT - The port that accepts connections from consumer clients. Default is "8001".
 -   REBALANCE - The number of milliseconds between rebalancing the partitions. Default is "10000" (10 seconds).
--   ROUTER_IMBALANCE. If set to "0" the partitions will distributed equally, with a greater number, REBALANCE will allow a client to have more partitions than its peers per this value. Default is "0".
+-   ROUTER_IMBALANCE - If set to "0" the partitions will distributed equally, with a greater number, REBALANCE will allow a client to have more partitions than its peers per this value. Default is "0".
 -   CONSUMER_IMBALANCE - If set to "0" the partitions will distributed equally, with a greater number, REBALANCE will allow a client to have more partitions than its peers per this value. Default is "0".
 -   TIMEOUT - A client must checkin within the timeout period in milliseconds or its partitions will be reassigned. Default is "30000".
+-   LEARN_FOR - The number of milliseconds after this application starts up that it will stay in learning mode. Default is "60000" (1 min).
 -   SHARD_SIZE - The number of aircraft per partition (shard). Default is "100".
 
 ## Router
@@ -98,7 +99,7 @@ A router has the following options:
 To create a consumer named "consumerA" and connect it to a coordinator at "coordinator.sample.com" on the default port:
 
 ```javascript
-node dist/router.js --client-id routerA --address coordinator.sample.com
+node dist/router.js --client-id consumerA --address coordinator.sample.com
 ```
 
 It is important that you provide a unqiue CLIENT_ID for each consumer. If a stable name is provided, then a consumer can be assigned the same partitions if it comes back up before a rebalance.
@@ -119,6 +120,8 @@ The routers use a dispatcher to send messages. The dispatcher has design princip
 The dispatcher included with this project was designed this way:
 
 -   At-Most-Once Delivery - Message delivery is not guaranteed, but a message won't be sent more than once. If a TCP channel is open to the consumer, the message will be sent (whether it was live or buffered) without care for whether it was accepted or not.
+
+-   No Receipts - Messages are sent but there is no acknowledgement that they were received.
 
 -   Fast Delivery - Messages are delivered immediately if possible (they are not buffered and flushed).
 

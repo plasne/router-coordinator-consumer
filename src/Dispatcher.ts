@@ -114,7 +114,8 @@ export class Dispatcher extends EventEmitter {
         if (attempt) return attempt;
 
         // put into buffer (hopefully there will be a client to process soon)
-        return this.buffer(envelope);
+        this.buffer(envelope);
+        return Promise.resolve();
     }
 
     public ask(
@@ -123,9 +124,25 @@ export class Dispatcher extends EventEmitter {
         payload?: any,
         options?: ISendOptions
     ) {
+        // ensure that the options is looking for a receipt
         const o = options || {};
         o.receipt = true;
-        return this.tell(icao, cmd, payload, o);
+
+        // encapsulate the message into an envelope
+        const envelope: IEnvelope = {
+            cmd,
+            created: new Date().valueOf(),
+            icao,
+            options: o,
+            payload
+        };
+
+        // dispatch immediately if possible
+        const attempt = this.attempt(envelope);
+        if (attempt) return attempt;
+
+        // put into buffer (hopefully there will be a client to process soon)
+        return this.buffer(envelope) as Promise<any>;
     }
 
     public add(options: ITcpClientOptions) {
@@ -203,10 +220,11 @@ export class Dispatcher extends EventEmitter {
         const index = this.partitions.findIndex(
             p => p.low <= icao && p.high >= icao
         );
+        if (index < 0) return;
 
         // remove the mapping
         const partition = this.partitions[index];
-        if (index > -1) this.partitions.splice(index, 1);
+        this.partitions.splice(index, 1);
         this.emit('unmap', partition);
 
         // request a new mapping
@@ -215,13 +233,17 @@ export class Dispatcher extends EventEmitter {
     }
 
     private buffer(envelope: IEnvelope) {
-        const promise = new Promise((resolve, reject) => {
-            envelope.resolve = resolve;
-            envelope.reject = reject;
-        });
-        this.emit('buffer', envelope);
         this.envelopes.push(envelope);
-        return promise;
+        this.emit('buffer', envelope);
+        if (envelope.options && envelope.options.receipt) {
+            const promise = new Promise((resolve, reject) => {
+                envelope.resolve = resolve;
+                envelope.reject = reject;
+            });
+            return promise;
+        } else {
+            return null;
+        }
     }
 
     private attempt(envelope: IEnvelope) {
@@ -250,6 +272,7 @@ export class Dispatcher extends EventEmitter {
             if (!ref) {
                 this.add({
                     address: partition.address,
+                    id: this.coordinator.id,
                     port: partition.port
                 });
             }

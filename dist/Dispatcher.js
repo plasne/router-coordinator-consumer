@@ -6,7 +6,7 @@ var __extends = (this && this.__extends) || (function () {
             ({ __proto__: [] } instanceof Array && function (d, b) { d.__proto__ = b; }) ||
             function (d, b) { for (var p in b) if (b.hasOwnProperty(p)) d[p] = b[p]; };
         return extendStatics(d, b);
-    }
+    };
     return function (d, b) {
         extendStatics(d, b);
         function __() { this.constructor = d; }
@@ -110,12 +110,27 @@ var Dispatcher = /** @class */ (function (_super) {
         if (attempt)
             return attempt;
         // put into buffer (hopefully there will be a client to process soon)
-        return this.buffer(envelope);
+        this.buffer(envelope);
+        return Promise.resolve();
     };
     Dispatcher.prototype.ask = function (icao, cmd, payload, options) {
+        // ensure that the options is looking for a receipt
         var o = options || {};
         o.receipt = true;
-        return this.tell(icao, cmd, payload, o);
+        // encapsulate the message into an envelope
+        var envelope = {
+            cmd: cmd,
+            created: new Date().valueOf(),
+            icao: icao,
+            options: o,
+            payload: payload
+        };
+        // dispatch immediately if possible
+        var attempt = this.attempt(envelope);
+        if (attempt)
+            return attempt;
+        // put into buffer (hopefully there will be a client to process soon)
+        return this.buffer(envelope);
     };
     Dispatcher.prototype.add = function (options) {
         var _this = this;
@@ -185,23 +200,29 @@ var Dispatcher = /** @class */ (function (_super) {
     Dispatcher.prototype.unassign = function (icao) {
         // find out the partition for this icao
         var index = this.partitions.findIndex(function (p) { return p.low <= icao && p.high >= icao; });
+        if (index < 0)
+            return;
         // remove the mapping
         var partition = this.partitions[index];
-        if (index > -1)
-            this.partitions.splice(index, 1);
+        this.partitions.splice(index, 1);
         this.emit('unmap', partition);
         // request a new mapping
         this.coordinator.tell('req-map', icao);
         this.emit('req-map', icao);
     };
     Dispatcher.prototype.buffer = function (envelope) {
-        var promise = new Promise(function (resolve, reject) {
-            envelope.resolve = resolve;
-            envelope.reject = reject;
-        });
-        this.emit('buffer', envelope);
         this.envelopes.push(envelope);
-        return promise;
+        this.emit('buffer', envelope);
+        if (envelope.options && envelope.options.receipt) {
+            var promise = new Promise(function (resolve, reject) {
+                envelope.resolve = resolve;
+                envelope.reject = reject;
+            });
+            return promise;
+        }
+        else {
+            return null;
+        }
     };
     Dispatcher.prototype.attempt = function (envelope) {
         // find out the partition for this icao
@@ -220,6 +241,7 @@ var Dispatcher = /** @class */ (function (_super) {
             if (!ref) {
                 this.add({
                     address: partition.address,
+                    id: this.coordinator.id,
                     port: partition.port
                 });
             }

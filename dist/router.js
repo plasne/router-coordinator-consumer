@@ -128,9 +128,12 @@ function setup() {
                     logger.error(error.stack ? error.stack : error.message);
                 });
                 // log settings
-                logger.info("ADDRESS is \"" + pclient_1.address + "\".");
-                logger.info("PORT is \"" + pclient_1.port + "\".");
+                logger.info("CLIENT_ID is \"" + CLIENT_ID + "\".");
+                logger.info("SERVER_ADDRESS is \"" + SERVER_ADDRESS + "\".");
+                logger.info("SERVER_PORT is \"" + SERVER_PORT + "\".");
                 logger.info("COUNT is \"" + COUNT + "\".");
+                logger.info("FLUSH_EVERY is \"" + FLUSH_EVERY + "\".");
+                logger.info("BUFFER_TIMEOUT is \"" + BUFFER_TIMEOUT + "\".");
                 dispatcher_1 = new Dispatcher_1.Dispatcher(pclient_1, FLUSH_EVERY, BUFFER_TIMEOUT)
                     .on('error', function (error, module) {
                     logger.error("there was an error raised in module \"" + module + "\"...");
@@ -142,14 +145,17 @@ function setup() {
                     .on('unmap', function (partition) {
                     logger.verbose("unmap [" + partition.low + " - " + partition.high + "] to " + partition.address + ":" + partition.port);
                 })
-                    .on('dispatch', function (message, client) {
-                    logger.verbose("dispatched " + JSON.stringify(message.payload) + " to " + client.address + ":" + client.port);
+                    .on('dispatch', function (envelope, client) {
+                    logger.verbose("dispatched " + JSON.stringify(envelope.payload) + " to " + client.address + ":" + client.port);
                 })
-                    .on('buffer', function (message) {
-                    logger.verbose("buffered " + JSON.stringify(message.payload));
+                    .on('buffer', function (envelope) {
+                    logger.verbose("buffered " + JSON.stringify(envelope.payload));
                 })
                     .on('reject', function (message) {
                     logger.verbose("rejected " + JSON.stringify(message));
+                })
+                    .on('timeout', function (envelope) {
+                    logger.verbose("timeout " + JSON.stringify(envelope.payload));
                 })
                     .on('begin-flush', function (count) {
                     logger.verbose("the buffer flush began with " + count + " messages remaining.");
